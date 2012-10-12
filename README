@@ -1,0 +1,7 @@
+This is currently a rather messy example for the Stellaris ENC28J60 booster packet.
+
+At startup DHCP is used to acquire an IPv4 address. After that a small web-page is served on port 80.
+
+In order to build this code, a working arm-none-eabi-gcc installation is required as well as the StellarisWare
+driver library.
+Before buidling, please modify "toolchainsettings" accordingly.
