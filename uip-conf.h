@@ -125,7 +125,7 @@ typedef unsigned short uip_stats_t;
 // Here we include the header file for the application we are using in
 // this example
 //
-#include "apps/httpd/httpd.h"
+#include "httpd.h"
 //
 // Define the uIP Application State type, based on the httpd.h state variable.
 //

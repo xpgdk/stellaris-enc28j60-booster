@@ -58,6 +58,7 @@ ODFLAGS	= -D
 SOURCES = \
 	$(NAME).c startup_gcc.c \
 	enc28j60.c \
+	httpd.c \
 	$(DIR_DRIVERLIB)/gcc-cm4f/libdriver-cm4f.a \
 	$(DIR_DRIVERLIB)/uart.c \
 	$(DIR_UTILS)/uartstdio.c \
@@ -66,8 +67,7 @@ SOURCES = \
 	$(DIR_UIP)/uip/uip_timer.c \
 	$(DIR_UIP)/uip/uip_arp.c \
 	$(DIR_UIP)/uip/psock.c \
-	$(DIR_UIP)/apps/dhcpc/dhcpc.c \
-	$(DIR_UIP)/apps/httpd/httpd.c
+	$(DIR_UIP)/apps/dhcpc/dhcpc.c
 
 all: reg
 	
