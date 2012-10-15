@@ -8,6 +8,9 @@
 #define REQUEST_WRITE	2
 #define REQUEST_CONFIG	3
 
+#define REQUEST_WRITE_OK	0
+#define REQUEST_WRITE_ERR	1
+
 struct httpd_state {
   uint8_t	idle_count;
   uint8_t	data_count;

@@ -24,34 +24,6 @@ static const char unknown_request[] = "Unknown request";
 
 static const char read_result[] = "Read:";
 
-/*
-  Read response is JSON:
-  {
-	"J1" = ["x", 1.02, 1.03, 1.04, 1.05, 1.06, 1.07, 1.08, 1.09, 1.10],
-	"J2" = ["x", 2.02, 2.03, 2.04,  "x", 2.06, 2.07, 2.08, 2.09, 2.10]
-  }
-
-  Where
-  1.02 = PB5
-  1.03 = PB0
-  1.04 = PB1
-  1.05 = PE4
-  1.06 = PE5
-  1.07 = PB4
-  1.08 = PA5
-  1.09 = PA6
-  1.10 = PA7
-
-  2.02 = PB2
-  2.03 = PE0
-  2.04 = PF0
-  X
-  2.06 = PB7
-  2.07 = PB6
-  2.08 = PA4
-  2.09 = PA3
-  2.10 = PA2
- */
 
 #define CONFIG_NOT_USED		0
 #define CONFIG_INPUT		1
@@ -63,16 +35,14 @@ struct header_pin {
   uint8_t	config;
 };
 
-static struct header_pin j1[10];
-static uint16_t j1_length = 10;
+#define HEADER_SIZE	10
 
-static struct header_pin j2[10];
-static uint16_t j2_length = 10;
+static struct header_pin j1[HEADER_SIZE];
+static struct header_pin j2[HEADER_SIZE];
+static struct header_pin j3[HEADER_SIZE];
+static struct header_pin j4[HEADER_SIZE];
 
-static struct header_pin j3[10];
-static uint16_t j3_length = 10;
-
-static void *headers[3] = {&j1, &j2, &j3};
+static void *headers[4] = {&j1, &j2, &j3, &j4};
 
 #define DATA_BUF ((uint8_t*)(uip_appdata))
 
@@ -84,6 +54,8 @@ static void *headers[3] = {&j1, &j2, &j3};
 
 static void configure_pins(struct header_pin pins[], uint16_t length);
 static int read_pins(struct header_pin pins[], uint16_t length, uint8_t *buf);
+static bool parse_path(char *path, struct header_pin **connector, uint8_t *pin,
+		       char *value);
 
 void
 httpd_init(void) {
@@ -122,13 +94,26 @@ httpd_init(void) {
   SETUP_PIN(j3[8], GPIO_PORTE_BASE, GPIO_PIN_3, CONFIG_INPUT);
   SETUP_PIN(j3[9], GPIO_PORTF_BASE, GPIO_PIN_1, CONFIG_OUTPUT);
 
+  SETUP_PIN(j4[0], GPIO_PORTF_BASE, GPIO_PIN_2, CONFIG_OUTPUT);
+  SETUP_PIN(j4[1], GPIO_PORTF_BASE, GPIO_PIN_3, CONFIG_OUTPUT);
+  SETUP_PIN(j4[2], GPIO_PORTB_BASE, GPIO_PIN_3, CONFIG_INPUT);
+  SETUP_PIN(j4[3], GPIO_PORTC_BASE, GPIO_PIN_4, CONFIG_INPUT);
+  SETUP_PIN(j4[4], GPIO_PORTC_BASE, GPIO_PIN_5, CONFIG_INPUT);
+  SETUP_PIN(j4[5], GPIO_PORTC_BASE, GPIO_PIN_6, CONFIG_INPUT);
+  SETUP_PIN(j4[6], GPIO_PORTC_BASE, GPIO_PIN_7, CONFIG_INPUT);
+  SETUP_PIN(j4[7], GPIO_PORTD_BASE, GPIO_PIN_6, CONFIG_INPUT);
+  SETUP_PIN(j4[8], GPIO_PORTD_BASE, GPIO_PIN_7, CONFIG_INPUT);
+  SETUP_PIN(j4[9], GPIO_PORTF_BASE, GPIO_PIN_4, CONFIG_INPUT);
+
+  MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOC);
   MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOD);
   MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOE);
   MAP_SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
 
-  configure_pins(j1, j1_length);
-  configure_pins(j2, j2_length);
-  configure_pins(j3, j3_length);
+  configure_pins(j1, HEADER_SIZE);
+  configure_pins(j2, HEADER_SIZE);
+  configure_pins(j3, HEADER_SIZE);
+  configure_pins(j4, HEADER_SIZE);
 }
 
 void httpd_appcall(void) {
@@ -172,84 +157,52 @@ void httpd_appcall(void) {
       hs->request_type = REQUEST_READ;
     } else if(strncmp(path, "/write/", 7) == 0) {
       hs->request_type = REQUEST_WRITE;
-      char buf[20];
+      hs->state = REQUEST_WRITE_ERR;
       struct header_pin *connector;
-      int i,l;
-      for(i=7; path[i] != '\0' && path[i] != '.'; i++);
+      uint8_t pin;
+      char value[10];
 
-      memcpy(buf, path+7, i-7);
-      buf[i-7] = '\0';
-
-      printf("Port: %s\n", buf);
-      l = i+1;
-      if( l == '\0' ) {
+      if( !parse_path(path+7, &connector, &pin, value) ) {
 	goto config_done;
       }
-      printf("c: %d\n", (buf[0]-'0')-1);
-      connector = (struct header_pin*)headers[(buf[0]-'0')-1];
-      printf("j1: %p\n", &j1);
-      printf("j2: %p\n", &j2);
-      printf("j3: %p\n", &j3);
-      printf("connector: %p\n", connector);
-      for(; path[i] != '\0' && path[i] != '/'; i++);
 
-      memcpy(buf, path+l, i-l);
-      buf[i-l] = '\0';
-      printf("Pin: %s\n", buf);
-
-      l = i+1;
-      uint8_t pin = atoi(buf)-1; //(buf[0] - '0')-1;
-      if( l == '\0' ) {
+      if( connector[pin].config != CONFIG_OUTPUT ) {
 	goto config_done;
       }
-      for(; path[i] != '\0'; i++);
 
-      memcpy(buf, path+l, i-l);
-      buf[i-l] = '\0';
-      printf("pin: %d\n", pin);
-      printf("Value: '%s'\n", buf);
-
-      printf("C: %p\n", connector[pin].base);
-      printf("C: %p\n", (*(&j3))[pin].base);
-      printf("P: %p\n", GPIO_PORTF_BASE);
-
-      if( connector[pin].config != CONFIG_OUTPUT )
-	goto config_done;
-
-      if(buf[0] == '1') {
+      if(value[0] == '1') {
 	MAP_GPIOPinWrite(connector[pin].base, connector[pin].pin, connector[pin].pin);
       } else {
 	MAP_GPIOPinWrite(connector[pin].base, connector[pin].pin, 0);
       }
+      hs->state = REQUEST_WRITE_OK;
     } else if(strncmp(path, "/config/",8) == 0) {
       hs->request_type = REQUEST_CONFIG;
-      char buf[20];
-      int i,l;
-      for(i=8; path[i] != '\0' && path[i] != '.'; i++);
+      struct header_pin *connector;
+      uint8_t pin;
+      char dir[10];
 
-      memcpy(buf, path+8, i-8);
-      buf[i-8] = '\0';
-
-      printf("Port: %s\n", buf);
-      l = i+1;
-      if( l == '\0' ) {
+      if( !parse_path(path+8, &connector, &pin, dir) ) {
+	printf("Nope\n");
 	goto config_done;
       }
-      for(; path[i] != '\0' && path[i] != '/'; i++);
 
-      memcpy(buf, path+l, i-l);
-      buf[i-l] = '\0';
-      printf("Pin: %s\n", buf);
-
-      l = i+1;
-      if( l == '\0' ) {
+      if( connector[pin].config == CONFIG_NOT_USED ) {
+	printf("N/A\n");
 	goto config_done;
       }
-      for(; path[i] != '\0'; i++);
 
-      memcpy(buf, path+l, i-l);
-      buf[i-l] = '\0';
-      printf("Dir: '%s'\n", buf);
+      printf("Dir: '%c'\n", dir[0]);
+
+      if( dir[0] == 'i' ) {
+	printf("Input\n");
+	connector[pin].config = CONFIG_INPUT;
+	MAP_GPIOPinTypeGPIOInput(connector[pin].base, connector[pin].pin);
+      } else if( dir[0] == 'o' ) {
+	printf("Output\n");
+	connector[pin].config = CONFIG_OUTPUT;
+	MAP_GPIOPinTypeGPIOOutput(connector[pin].base, connector[pin].pin);
+      }
     } else {
       hs->request_type = 0;
     }
@@ -265,7 +218,7 @@ void httpd_appcall(void) {
   } else if( uip_poll() ) {
     printf("Poll\n");
     hs->idle_count++;
-    if( hs->idle_count > 5 ) {
+    if( hs->idle_count > 10 ) {
       uip_close();
     }
   }
@@ -287,26 +240,34 @@ void httpd_appcall(void) {
 	static char b1[] = "{\n\t\"J1\" = [";
 	static char b2[] = "\t\"J2\" = [";
 	static char b3[] = "\t\"J3\" = [";
+	static char b4[] = "\t\"J4\" = [";
 	static char bnone[] = "\"x\"";
 	static char bx[] = "\n}";
 
 	memcpy(buf+i, b1, sizeof(b1)-1);
 	i+= sizeof(b1)-1;
-	i += read_pins(j1, j1_length, buf+i);
+	i += read_pins(j1, HEADER_SIZE, buf+i);
 	buf[i++] = ']';
 	buf[i++] = ',';
 	buf[i++] = '\n';
 
 	memcpy(buf+i, b2, sizeof(b2)-1);
 	i+= sizeof(b2)-1;
-	i += read_pins(j2, j2_length, buf+i);
+	i += read_pins(j2, HEADER_SIZE, buf+i);
 	buf[i++] = ']';
 	buf[i++] = ',';
 	buf[i++] = '\n';
 
 	memcpy(buf+i, b3, sizeof(b3)-1);
 	i+= sizeof(b3)-1;
-	i += read_pins(j3, j3_length, buf+i);
+	i += read_pins(j3, HEADER_SIZE, buf+i);
+	buf[i++] = ']';
+	buf[i++] = ',';
+	buf[i++] = '\n';
+
+	memcpy(buf+i, b4, sizeof(b4)-1);
+	i+= sizeof(b4)-1;
+	i += read_pins(j4, HEADER_SIZE, buf+i);
 	buf[i++] = ']';
 
 	memcpy(buf+i, bx, sizeof(bx)-1);
@@ -334,9 +295,17 @@ void httpd_appcall(void) {
       if(hs->data_count == 0) {
 	hs->xmit_buf = http_json_header;
 	hs->xmit_buf_size = sizeof(http_json_header)-1;
+      } else if(hs->data_count == 1) {
+	if( hs->state == REQUEST_WRITE_OK ) {
+	  char buf[] = "ok";
+	  uip_send(buf, sizeof(buf)-1);
+	} else {
+	  char buf[] = "error";
+	  uip_send(buf, sizeof(buf)-1);
+	}
 	hs->done = true;
-      } /*else if(hs->data_count == 1) {
-	}*/ else {
+	hs->xmit_buf = NULL;
+      } else {
 	hs->xmit_buf = NULL;
 	uip_close();
       }
@@ -346,7 +315,6 @@ void httpd_appcall(void) {
 	hs->xmit_buf = http_404_header;
 	hs->xmit_buf_size = sizeof(http_404_header)-1;
       } else if(hs->data_count == 1) {
-	printf("Unknown request\n");
 	hs->xmit_buf = unknown_request;
 	hs->xmit_buf_size = sizeof(unknown_request)-1;
 	hs->done = true;
@@ -381,15 +349,18 @@ configure_pins(struct header_pin pins[], uint16_t length) {
 int
 read_pins(struct header_pin pins[], uint16_t length, uint8_t *buf) {
   static char bnone[] = "\"x\"";
+  static char boutput[] = "\"O\"";
   uint16_t i = 0;
 
   for(int l=0;l<length;l++) {
     if( l > 0)
       buf[i++] = ',';
     printf("pin %d: %d\n", l, pins[l].config);
-    if( pins[l].config == CONFIG_NOT_USED ||
-	pins[l].config == CONFIG_OUTPUT ) {
+    if( pins[l].config == CONFIG_NOT_USED) {
       memcpy(buf+i, bnone, sizeof(bnone)-1);
+      i+= sizeof(bnone)-1;
+    } else if( pins[l].config == CONFIG_OUTPUT ) {
+      memcpy(buf+i, boutput, sizeof(boutput)-1);
       i+= sizeof(bnone)-1;
     } else {
       if( MAP_GPIOPinRead(pins[l].base, pins[l].pin) == 0x00 ) {
@@ -400,4 +371,56 @@ read_pins(struct header_pin pins[], uint16_t length, uint8_t *buf) {
     }
   }
   return i;
+}
+
+bool parse_path(char *path, struct header_pin **connector, uint8_t *pin,
+		char *value) {
+  char buf[20];
+  struct header_pin *con;
+  int i,l;
+  for(i=0; path[i] != '\0' && path[i] != '.'; i++);
+
+  memcpy(buf, path, i);
+  buf[i] = '\0';
+
+  printf("Port: %s\n", buf);
+  l = i+1;
+  if( l == '\0' ) {
+    return false;
+  }
+  uint8_t index = (buf[0]-'0')-1;
+  printf("c: %d\n", (buf[0]-'0')-1);
+
+  UARTFlushTx(false);
+
+  if( index > 3) {
+    return false;
+  }
+
+  con = (struct header_pin*)headers[(buf[0]-'0')-1];
+  printf("j1: %p\n", &j1);
+  printf("j2: %p\n", &j2);
+  printf("j3: %p\n", &j3);
+  printf("connector: %p\n", con);
+  for(; path[i] != '\0' && path[i] != '/'; i++);
+
+  memcpy(buf, path+l, i-l);
+  buf[i-l] = '\0';
+  printf("Pin: %s\n", buf);
+
+  l = i+1;
+  *pin = atoi(buf)-1; //(buf[0] - '0')-1;
+  if( l == '\0' ) {
+    return false;
+  }
+  for(; path[i] != '\0'; i++);
+
+  memcpy(value, path+l, i-l);
+  value[i-l] = '\0';
+  printf("pin: %d\n", *pin);
+  printf("Value: '%s'\n", value);
+
+  *connector = con;
+
+  return true;
 }
