@@ -56,6 +56,7 @@ static void configure_pins(struct header_pin pins[], uint16_t length);
 static int read_pins(struct header_pin pins[], uint16_t length, uint8_t *buf);
 static bool parse_path(char *path, struct header_pin **connector, uint8_t *pin,
 		       char *value);
+static void configure_pin(struct header_pin *pin);
 
 void
 httpd_init(void) {
@@ -197,11 +198,11 @@ void httpd_appcall(void) {
       if( dir[0] == 'i' ) {
 	printf("Input\n");
 	connector[pin].config = CONFIG_INPUT;
-	MAP_GPIOPinTypeGPIOInput(connector[pin].base, connector[pin].pin);
+	configure_pin(&connector[pin]);
       } else if( dir[0] == 'o' ) {
 	printf("Output\n");
 	connector[pin].config = CONFIG_OUTPUT;
-	MAP_GPIOPinTypeGPIOOutput(connector[pin].base, connector[pin].pin);
+	configure_pin(&connector[pin]);
       }
     } else {
       hs->request_type = 0;
@@ -334,15 +335,16 @@ void httpd_appcall(void) {
 void
 configure_pins(struct header_pin pins[], uint16_t length) {
   for(int i=0; i<length; i++) {
-    if(pins[i].config == CONFIG_INPUT) {
-      printf("Setting input %d\n", i);
-      MAP_GPIOPinTypeGPIOInput(pins[i].base, pins[i].pin);
-    } else if( pins[i].config == CONFIG_OUTPUT) {
-      MAP_GPIOPinTypeGPIOOutput(pins[i].base, pins[i].pin);
-    } else {
-      printf("NOP           %d\n", i);
-    }
+    configure_pin(&pins[i]);
     UARTFlushTx(false);
+  }
+}
+
+void configure_pin(struct header_pin *pin) {
+  if(pin->config == CONFIG_INPUT) {
+    MAP_GPIOPinTypeGPIOInput(pin->base, pin->pin);
+  } else if( pin->config == CONFIG_OUTPUT) {
+    MAP_GPIOPinTypeGPIOOutput(pin->base, pin->pin);
   }
 }
 
