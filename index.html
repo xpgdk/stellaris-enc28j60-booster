@@ -1,0 +1,193 @@
+<html>
+<head>
+  <title>Stellaris GPIO</title>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.8.2/jquery.min.js" type="text/javascript"></script>
+  <script type="text/javascript">
+    var updateTimer;
+
+    function clearStyles(element) {
+    element.removeClass("portNA");
+    element.removeClass("portOut");
+    element.removeClass("portInLow");
+    element.removeClass("portInHigh");
+    }
+
+    function setOutput(arg) {
+    jQuery.getJSON("/write/" + arg, function(data) {
+    });
+    getResult();
+    }
+
+    function getResult() {
+    console.log("Begin");
+    jQuery.getJSON("/read", function(data) {
+    console.log("Got data");
+    for(s in data) {
+    console.log(s);
+    for(i=0; i<data[s].length; i++) {
+			var port = "#" + s + "\\." + (i+1);
+			var p = jQuery(port);
+			var val = data[s][i];
+			var onId = (s[1] + "." + (i+1) + "/1");
+			var offId = s[1] + "." + (i+1) + "/0";
+			var switchActionOn = "setOutput(\""+onId+"\");";
+			var switchActionOff = "setOutput(\""+offId+"\");";
+		       clearStyles(p);
+			      p.html("&nbsp;");
+			if( val == "x" ) {
+			       p.addClass("portNA");
+			       p.html("N/A");
+			} else if (val == 3) {
+			       p.addClass("portOut");
+			       p.html("<div onClick='"+switchActionOff+"' class='switchButton switchButtonOn buttonSelected'>On</div><div id='"+offId+"'class='switchButton switchButtonOff' onClick='"+switchActionOff+"'>Off</div>");
+			} else if( val == 2) {
+			       p.addClass("portOut");
+			       p.html("<div onClick='"+switchActionOn+"' class='switchButton switchButtonOn'>On</div><div id='"+offId+"'class='switchButton switchButtonOff buttonSelected' onClick='"+switchActionOn+"'>Off</div>");
+                        } else if (val == 0) {
+			       p.addClass("portInLow");
+			} else if (val == 1) {
+			       p.addClass("portInHigh");
+			}
+    }
+    }
+    });
+    }
+
+    function timerEvent() {
+      getResult();
+      init();
+    }
+
+    function init() {
+       getResult();
+       updateTimer = setTimeout(timerEvent, 2000);
+    }
+  </script>
+  <style type="text/css">
+    td.spacer {
+    width: 50px;
+    }
+    td.port {
+    width: 9ex;
+    border: solid blue 1px;
+    }
+    td.portHeader {
+    text-align: center;
+    }
+    .portNA {
+    background-color: black;
+    color: white;
+    text-align: center;
+    }
+    .portOut {
+    }
+    .portInLow {
+    background-color: white;
+    }
+    .portInHigh {
+    background-color: red;
+    }
+
+    .switchButton {
+    cursor: pointer;
+    }
+    .switchButtonOn {
+    width: 4ex;
+    display: inline;
+    float:left;
+    }
+    .switchButtonOff {
+    width: 4ex;
+    display: inline;
+    float:right;
+    }
+
+    .buttonSelected {
+    border: red solid 1px;
+    }
+  </style>
+</head>
+<body onload="init();">
+  <div style="cursor: pointer;display:inline;" onclick="getResult()">Update</div>
+  <div id="result"></div>
+  <table style="border: solid red 1px;">
+    <tr>
+      <td class="portHeader">J1</td>
+      <td class="portHeader">J3</td>
+      <td class="spacer"></td>
+      <td class="portHeader">J4</td>
+      <td class="portHeader">J2</td>
+    </tr>
+    <tr>
+      <td id="J1.1" class="port">P1.1</td>
+      <td id="J3.1" class="port">P3.1</td>
+      <td class="spacer"></td>
+      <td id="J4.1" class="port">P4.1</td>
+      <td id="J2.1" class="port">P2.1</td>
+    </tr>
+    <tr>
+      <td id="J1.2" class="port">P1.2</td>
+      <td id="J3.2" class="port">P3.2</td>
+      <td class="spacer"></td>
+      <td id="J4.2" class="port">P4.2</td>
+      <td id="J2.2" class="port">P2.2</td>
+    </tr>
+    <tr>
+      <td id="J1.3" class="port">P1.3</td>
+      <td id="J3.3" class="port">P3.3</td>
+      <td class="spacer"></td>
+      <td id="J4.3" class="port">P4.3</td>
+      <td id="J2.3" class="port">P2.3</td>
+    </tr>
+    <tr>
+      <td id="J1.4" class="port">P1.4</td>
+      <td id="J3.4" class="port">P3.4</td>
+      <td class="spacer"></td>
+      <td id="J4.4" class="port">P4.4</td>
+      <td id="J2.4" class="port">P2.4</td>
+    </tr>
+    <tr>
+      <td id="J1.5" class="port">P1.5</td>
+      <td id="J3.5" class="port">P3.5</td>
+      <td class="spacer"></td>
+      <td id="J4.5" class="port">P4.5</td>
+      <td id="J2.5" class="port">P2.5</td>
+    </tr>
+    <tr>
+      <td id="J1.6" class="port">P1.6</td>
+      <td id="J3.6" class="port">P3.6</td>
+      <td class="spacer"></td>
+      <td id="J4.6" class="port">P4.6</td>
+      <td id="J2.6" class="port">P2.6</td>
+    </tr>
+    <tr>
+      <td id="J1.7" class="port">P1.7</td>
+      <td id="J3.7" class="port">P3.7</td>
+      <td class="spacer"></td>
+      <td id="J4.7" class="port">P4.7</td>
+      <td id="J2.7" class="port">P2.7</td>
+    </tr>
+    <tr>
+      <td id="J1.8" class="port">P1.8</td>
+      <td id="J3.8" class="port">P3.8</td>
+      <td class="spacer"></td>
+      <td id="J4.8" class="port">P4.8</td>
+      <td id="J2.8" class="port">P2.8</td>
+    </tr>
+    <tr>
+      <td id="J1.9" class="port">P1.9</td>
+      <td id="J3.9" class="port">P3.9</td>
+      <td class="spacer"></td>
+      <td id="J4.9" class="port">P4.9</td>
+      <td id="J2.9" class="port">P2.9</td>
+    </tr>
+    <tr>
+      <td id="J1.10" class="port">P1.10</td>
+      <td id="J3.10" class="port">P3.10</td>
+      <td class="spacer"></td>
+      <td id="J4.10" class="port">P4.10</td>
+      <td id="J2.10" class="port">P2.10</td>
+    </tr>
+  </table>
+</body>
+</html>

@@ -5,14 +5,18 @@
 #include <stdbool.h>
 #include <string.h>
 
+#include "files_data.h"
+
 static const char http_response_header[] =
   "HTTP/1.1 200 OK\r\n"
   "Server: net430\r\n"
+  "Access-Control-Allow-Origin: *\r\n"
   "Content-Type: text/html\r\n\r\n";
 
 static const char http_json_header[] =
   "HTTP/1.1 200 OK\r\n"
   "Server: net430\r\n"
+  "Access-Control-Allow-Origin: *\r\n"
   "Content-Type: application/json\r\n\r\n";
 
 static const char http_404_header[] =
@@ -28,6 +32,10 @@ static const char read_result[] = "Read:";
 #define CONFIG_NOT_USED		0
 #define CONFIG_INPUT		1
 #define CONFIG_OUTPUT		2
+
+#define FILE_ROOT		1
+
+#define TRANSFER_SIZE		200
 
 struct header_pin {
   uint32_t	base;
@@ -154,7 +162,12 @@ void httpd_appcall(void) {
     path[i-PATH_START] = '\0';
     printf("Path: '%s'\n", path);
 
-    if(strncmp(path, "/read", 5) == 0) {
+    if(strcmp(path, "/") == 0) {
+      printf("root\n");
+      hs->request_type = REQUEST_FILE;
+      hs->state = FILE_ROOT;
+      hs->offset = 0;
+    } else if(strncmp(path, "/read", 5) == 0) {
       hs->request_type = REQUEST_READ;
     } else if(strncmp(path, "/write/", 7) == 0) {
       hs->request_type = REQUEST_WRITE;
@@ -238,10 +251,10 @@ void httpd_appcall(void) {
 	uint8_t buf[500];
 	uint16_t i = 0;
 
-	static char b1[] = "{\n\t\"J1\" = [";
-	static char b2[] = "\t\"J2\" = [";
-	static char b3[] = "\t\"J3\" = [";
-	static char b4[] = "\t\"J4\" = [";
+	static char b1[] = "{\n\t\"J1\": [";
+	static char b2[] = "\t\"J2\": [";
+	static char b3[] = "\t\"J3\": [";
+	static char b4[] = "\t\"J4\": [";
 	static char bnone[] = "\"x\"";
 	static char bx[] = "\n}";
 
@@ -311,6 +324,33 @@ void httpd_appcall(void) {
 	uip_close();
       }
       break;
+    case REQUEST_FILE:
+      if(hs->data_count == 0) {
+	hs->xmit_buf = http_response_header;
+	hs->xmit_buf_size = sizeof(http_response_header)-1;
+      } else {
+	uint32_t offset = (hs->data_count-1) * TRANSFER_SIZE;
+	uint32_t remain;
+
+	remain = index_html_len - offset;
+
+	uint16_t count = TRANSFER_SIZE;
+	if( remain < TRANSFER_SIZE) {
+	  count = remain;
+	  hs->done = true;
+	}
+
+	printf("remain: %d\n", remain);
+	printf("count: %d\n", count);
+	if( index_html_len <= offset ) {
+	  hs->xmit_buf = NULL;
+	  uip_close();
+	} else {
+	  hs->xmit_buf = index_html + offset;
+	  hs->xmit_buf_size = count;
+	}
+      }
+      break;
     default:
       if(hs->data_count == 0) {
 	hs->xmit_buf = http_404_header;
@@ -351,7 +391,6 @@ void configure_pin(struct header_pin *pin) {
 int
 read_pins(struct header_pin pins[], uint16_t length, uint8_t *buf) {
   static char bnone[] = "\"x\"";
-  static char boutput[] = "\"O\"";
   uint16_t i = 0;
 
   for(int l=0;l<length;l++) {
@@ -362,8 +401,11 @@ read_pins(struct header_pin pins[], uint16_t length, uint8_t *buf) {
       memcpy(buf+i, bnone, sizeof(bnone)-1);
       i+= sizeof(bnone)-1;
     } else if( pins[l].config == CONFIG_OUTPUT ) {
-      memcpy(buf+i, boutput, sizeof(boutput)-1);
-      i+= sizeof(bnone)-1;
+      if( MAP_GPIOPinRead(pins[l].base, pins[l].pin) == 0x00 ) {
+	buf[i++] = '2';
+      } else {
+	buf[i++] = '3';
+      }
     } else {
       if( MAP_GPIOPinRead(pins[l].base, pins[l].pin) == 0x00 ) {
 	buf[i++] = '0';

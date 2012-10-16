@@ -7,6 +7,7 @@
 #define REQUEST_READ	1
 #define REQUEST_WRITE	2
 #define REQUEST_CONFIG	3
+#define REQUEST_FILE	4
 
 #define REQUEST_WRITE_OK	0
 #define REQUEST_WRITE_ERR	1
@@ -17,7 +18,8 @@ struct httpd_state {
   uint8_t	state;
   uint8_t	request_type;
   const uint8_t	*xmit_buf;
-  uint8_t	xmit_buf_size;
+  uint16_t	xmit_buf_size;
+  uint16_t	offset;
   bool		done;
 };
 
