@@ -1,7 +1,10 @@
+#include <inc/hw_ints.h>
 #include <stdint.h>
 #include "common.h"
 #include "enc28j60.h"
 #include "spi.h"
+#include <driverlib/systick.h>
+#include <driverlib/interrupt.h>
 #include <uip/uip.h>
 #include <uip/uip_arp.h>
 
@@ -16,6 +19,7 @@ volatile unsigned long g_ulTickCounter = 0;
 #define FLAG_RXPKT		1
 #define FLAG_TXPKT		2
 #define FLAG_RXPKTPEND		3
+#define FLAG_ENC_INT		4
 
 #define SYSTICKHZ		CLOCK_CONF_SECOND
 #define SYSTICKMS		(1000 / SYSTICKHZ)
@@ -74,7 +78,7 @@ enc28j60_comm_init(void) {
   MAP_GPIOPinTypeGPIOOutput(GPIO_PORTA_BASE, SRAM_CS);
 //  MAP_GPIOPinTypeGPIOOutput(GPIO_PORTA_BASE, ENC_CS | ENC_RESET | SRAM_CS);
   MAP_GPIOPinTypeGPIOInput(GPIO_PORTE_BASE, ENC_INT);
-//
+
 //  MAP_GPIOPinWrite(GPIO_PORTA_BASE, ENC_RESET, 0);
   MAP_GPIOPinWrite(ENC_CS_PORT, ENC_CS, ENC_CS);
   MAP_GPIOPinWrite(GPIO_PORTA_BASE, SRAM_CS, SRAM_CS);
@@ -133,6 +137,18 @@ int main(void) {
   MAP_SysTickEnable();
   MAP_SysTickIntEnable();
 
+  //MAP_IntEnable(INT_GPIOA);
+  MAP_IntEnable(INT_GPIOE);
+  MAP_IntMasterEnable();
+
+  MAP_SysCtlPeripheralClockGating(false);
+
+  printf("int enabled\n");
+
+  MAP_GPIOIntTypeSet(GPIO_PORTE_BASE, ENC_INT, GPIO_FALLING_EDGE);
+  MAP_GPIOPinIntClear(GPIO_PORTE_BASE, ENC_INT);
+  MAP_GPIOPinIntEnable(GPIO_PORTE_BASE, ENC_INT);
+
   uip_init();
 
   eth_addr.addr[0] = mac_addr[0];
@@ -183,14 +199,19 @@ int main(void) {
   long lPeriodicTimer, lARPTimer;
   lPeriodicTimer = lARPTimer = 0;
 
-  int  i = MAP_GPIOPinRead(GPIO_PORTA_BASE, ENC_INT) & ENC_INT;
+  int i; // = MAP_GPIOPinRead(GPIO_PORTA_BASE, ENC_INT) & ENC_INT;
   while(true) {
-    i = MAP_GPIOPinRead(GPIO_PORTA_BASE, ENC_INT) & ENC_INT;
-    while(i != 0 && g_ulFlags == 0) {
-      i = MAP_GPIOPinRead(GPIO_PORTA_BASE, ENC_INT) & ENC_INT;
-    }
+    //MAP_IntDisable(INT_UART0);
+    MAP_SysCtlSleep();
+    //MAP_IntEnable(INT_UART0);
 
-    if( i == 0 ) {
+    //i = MAP_GPIOPinRead(GPIO_PORTA_BASE, ENC_INT) & ENC_INT;
+    /*while(i != 0 && g_ulFlags == 0) {
+      i = MAP_GPIOPinRead(GPIO_PORTA_BASE, ENC_INT) & ENC_INT;
+      }*/
+
+    if( HWREGBITW(&g_ulFlags, FLAG_ENC_INT) == 1 ) {
+      HWREGBITW(&g_ulFlags, FLAG_ENC_INT) = 0;
       enc_action();
     }
 
@@ -275,4 +296,12 @@ clock_time_t
 clock_time(void)
 {
     return((clock_time_t)g_ulTickCounter);
+}
+
+void GPIOPortEIntHandler(void) {
+  uint8_t p = MAP_GPIOPinIntStatus(GPIO_PORTE_BASE, true) & 0xFF;
+
+  MAP_GPIOPinIntClear(GPIO_PORTE_BASE, p);
+
+  HWREGBITW(&g_ulFlags, FLAG_ENC_INT) = 1;
 }
