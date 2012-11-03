@@ -31,7 +31,8 @@ void uip_log(char *msg) {
 static void
 cpu_init(void) {
   // A safety loop in order to interrupt the MCU before setting the clock (wrongly)
-  for(int i=0; i<1000000; i++);
+  int i;
+  for(i=0; i<1000000; i++);
 
   // Setup for 16MHZ external crystal, use 200MHz PLL and divide by 4 = 50MHz
   MAP_SysCtlClockSet(SYSCTL_SYSDIV_16 | SYSCTL_USE_PLL | SYSCTL_OSC_MAIN |
@@ -224,7 +225,8 @@ int main(void) {
 
     if( lPeriodicTimer > UIP_PERIODIC_TIMER_MS ) {
       lPeriodicTimer = 0;
-      for(int l = 0; l < UIP_CONNS; l++) {
+      int l;
+      for(l = 0; l < UIP_CONNS; l++) {
 	uip_periodic(l);
 
 	//
@@ -239,7 +241,7 @@ int main(void) {
 	}
       }
 
-      for(int l = 0; l < UIP_UDP_CONNS; l++) {
+      for(l = 0; l < UIP_UDP_CONNS; l++) {
 	uip_udp_periodic(l);
 	if( uip_len > 0) {
 	  uip_arp_out();

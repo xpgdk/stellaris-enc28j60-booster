@@ -77,7 +77,8 @@ uint8_t enc_rcr_m(uint8_t reg) {
 void enc_rbm(uint8_t *buf, uint16_t count) {
 	MAP_GPIOPinWrite(ENC_CS_PORT, ENC_CS, 0);
 	spi_send(0x20 | 0x1A);
-	for (int i = 0; i < count; i++) {
+	int i;
+	for (i = 0; i < count; i++) {
 		*buf = spi_send(0xFF);
 		buf++;
 	}
@@ -87,7 +88,8 @@ void enc_rbm(uint8_t *buf, uint16_t count) {
 void enc_wbm(const uint8_t *buf, uint16_t count) {
 	MAP_GPIOPinWrite(ENC_CS_PORT, ENC_CS, 0);
 	spi_send(0x60 | 0x1A);
-	for (int i = 0; i < count; i++) {
+	int i;
+	for (i = 0; i < count; i++) {
 		spi_send(*buf);
 		buf++;
 	}
@@ -181,7 +183,7 @@ uint16_t enc_phy_read(uint8_t addr) {
 
 	/* Assuming that we are running at 1MHz, a single cycle is
 	 * 1 us */
-	SysCtlDelay(((SysCtlClockGet()/3)/1000));
+	MAP_SysCtlDelay(((MAP_SysCtlClockGet()/3)/1000));
 
 	uint8_t stat;
 	do {
@@ -207,7 +209,7 @@ void enc_phy_write(uint8_t addr, uint16_t value) {
 	WRITE_REG(ENC_MIWRL, value & 0xFF);
 	WRITE_REG(ENC_MIWRH, value >> 8);
 
-	SysCtlDelay(((SysCtlClockGet()/3)/1000));
+	MAP_SysCtlDelay(((MAP_SysCtlClockGet()/3)/1000));
 
 	uint8_t stat;
 	do {

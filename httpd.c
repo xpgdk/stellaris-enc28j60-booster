@@ -374,7 +374,8 @@ void httpd_appcall(void) {
 
 void
 configure_pins(struct header_pin pins[], uint16_t length) {
-  for(int i=0; i<length; i++) {
+  int i;
+  for(i=0; i<length; i++) {
     configure_pin(&pins[i]);
     UARTFlushTx(false);
   }
@@ -393,7 +394,8 @@ read_pins(struct header_pin pins[], uint16_t length, uint8_t *buf) {
   static char bnone[] = "\"x\"";
   uint16_t i = 0;
 
-  for(int l=0;l<length;l++) {
+  int l;
+  for(l=0;l<length;l++) {
     if( l > 0)
       buf[i++] = ',';
     printf("pin %d: %d\n", l, pins[l].config);
