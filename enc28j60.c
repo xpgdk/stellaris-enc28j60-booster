@@ -255,7 +255,7 @@ void enc_init(const uint8_t *mac) {
 
 	//MAP_GPIOPinWrite(ENC_RESET_PORT, ENC_RESET, ENC_RESET);
 
-	//enc_reset();
+	enc_reset();
 
 	uint8_t reg;
 	do {
@@ -274,6 +274,7 @@ void enc_init(const uint8_t *mac) {
 #endif
 
 	//SET_REG_BITS(ENC_ECON1, ENC_ECON1_TXRST | ENC_ECON1_RXRST);
+	SET_REG_BITS(ENC_ECON1, ENC_ECON1_TXRST);
 	CLEAR_REG_BITS(ENC_ECON1, ENC_ECON1_RXEN);
 
 	SET_REG_BITS(ENC_ECON2, ENC_ECON2_AUTOINC);
