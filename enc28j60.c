@@ -38,9 +38,6 @@ static void enc_set_bits(uint8_t reg, uint8_t bank, uint8_t mask);
 #define CLEAR_REG_BITS(reg, mask) enc_clear_bits(reg, reg ## _BANK, mask)
 static void enc_clear_bits(uint8_t reg, uint8_t bank, uint8_t mask);
 
-static void net_send_end_internal(void);
-
-
 void enc_reset(void) {
 	MAP_GPIOPinWrite(ENC_CS_PORT, ENC_CS, 0);
 
