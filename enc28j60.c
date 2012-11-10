@@ -1,4 +1,5 @@
 #include "enc28j60.h"
+#include "enc28j60reg.h"
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -12,6 +13,7 @@
 static uint8_t enc_current_bank;
 static uint16_t enc_next_packet;
 
+/* Internal low-level register access functions*/
 static uint8_t enc_rcr(uint8_t reg);
 static void enc_wcr(uint8_t reg, uint8_t val);
 static uint8_t enc_rcr_m(uint8_t reg);
@@ -20,23 +22,31 @@ static void enc_wbm(const uint8_t *buf, uint16_t count);
 static void enc_bfs(uint8_t reg, uint8_t mask);
 static void enc_bfc(uint8_t reg, uint8_t mask);
 static void enc_switch_bank(uint8_t new_bank);
+
+/* Internal high-level register access functions*/
+static uint8_t enc_read_reg(uint8_t reg, uint8_t bank);
+static void enc_write_reg(uint8_t reg, uint8_t bank, uint8_t value);
+static uint8_t enc_read_mreg(uint8_t reg, uint8_t bank);
+static void enc_set_bits(uint8_t reg, uint8_t bank, uint8_t mask);
+static void enc_clear_bits(uint8_t reg, uint8_t bank, uint8_t mask);
+
+/* Macros for accessing registers.
+ * These macros should be used instead of calling the functions directly.
+ * They simply pass the register's bank as an argument, so the caller
+ * doesn't have to deal with that.
+ */
+#define READ_REG(reg) enc_read_reg(reg, reg ## _BANK)
+#define WRITE_REG(reg, value) enc_write_reg(reg, reg ## _BANK, value)
+#define READ_MREG(reg) enc_read_mreg(reg, reg ## _BANK)
+#define SET_REG_BITS(reg, mask) enc_set_bits(reg, reg ## _BANK, mask)
+#define CLEAR_REG_BITS(reg, mask) enc_clear_bits(reg, reg ## _BANK, mask)
+
+
 static uint16_t enc_phy_read(uint8_t addr);
 static void enc_set_rx_area(uint16_t start, uint16_t end);
 static void enc_set_mac_addr(const uint8_t *mac_addr);
 static void enc_receive_packet(void);
-static void enc_write_packet_data(const uint8_t *buf, uint16_t count);
 
-#define READ_REG(reg) enc_read_reg(reg, reg ## _BANK)
-static uint8_t enc_read_reg(uint8_t reg, uint8_t bank);
-
-#define READ_MREG(reg) enc_read_mreg(reg, reg ## _BANK)
-static uint8_t enc_read_mreg(uint8_t reg, uint8_t bank);
-
-#define SET_REG_BITS(reg, mask) enc_set_bits(reg, reg ## _BANK, mask)
-static void enc_set_bits(uint8_t reg, uint8_t bank, uint8_t mask);
-
-#define CLEAR_REG_BITS(reg, mask) enc_clear_bits(reg, reg ## _BANK, mask)
-static void enc_clear_bits(uint8_t reg, uint8_t bank, uint8_t mask);
 
 void enc_reset(void) {
 	MAP_GPIOPinWrite(ENC_CS_PORT, ENC_CS, 0);
@@ -46,6 +56,9 @@ void enc_reset(void) {
 	MAP_GPIOPinWrite(ENC_CS_PORT, ENC_CS, ENC_CS);
 }
 
+/**
+ * Read Control Register (RCR)
+ */
 uint8_t enc_rcr(uint8_t reg) {
 	MAP_GPIOPinWrite(ENC_CS_PORT, ENC_CS, 0);
 	spi_send(reg);
@@ -55,6 +68,9 @@ uint8_t enc_rcr(uint8_t reg) {
 	return b;
 }
 
+/**
+ * Write Control Register (WCR)
+ */
 void enc_wcr(uint8_t reg, uint8_t val) {
 	MAP_GPIOPinWrite(ENC_CS_PORT, ENC_CS, 0);
 	spi_send(0x40 | reg);
@@ -62,6 +78,12 @@ void enc_wcr(uint8_t reg, uint8_t val) {
 	MAP_GPIOPinWrite(ENC_CS_PORT, ENC_CS, ENC_CS);
 }
 
+/**
+ * Read Control Register for MAC an MII registers.
+ * Reading MAC and MII registers produces an initial dummy
+ * byte. Presumably because it takes longer to fetch the values
+ * of those registers.
+ */
 uint8_t enc_rcr_m(uint8_t reg) {
 	MAP_GPIOPinWrite(ENC_CS_PORT, ENC_CS, 0);
 	spi_send(reg);
@@ -71,6 +93,10 @@ uint8_t enc_rcr_m(uint8_t reg) {
 	return b;
 }
 
+
+/**
+ * Read Buffer Memory.
+ */
 void enc_rbm(uint8_t *buf, uint16_t count) {
 	MAP_GPIOPinWrite(ENC_CS_PORT, ENC_CS, 0);
 	spi_send(0x20 | 0x1A);
@@ -82,6 +108,9 @@ void enc_rbm(uint8_t *buf, uint16_t count) {
 	MAP_GPIOPinWrite(ENC_CS_PORT, ENC_CS, ENC_CS);
 }
 
+/**
+ * Write Buffer Memory.
+ */
 void enc_wbm(const uint8_t *buf, uint16_t count) {
 	MAP_GPIOPinWrite(ENC_CS_PORT, ENC_CS, 0);
 	spi_send(0x60 | 0x1A);
@@ -93,6 +122,11 @@ void enc_wbm(const uint8_t *buf, uint16_t count) {
 	MAP_GPIOPinWrite(ENC_CS_PORT, ENC_CS, ENC_CS);
 }
 
+/**
+ * Bit Field Set.
+ * Set the bits of argument 'mask' in the register 'reg'.
+ * Not valid for MAC and MII registers.
+ */
 void enc_bfs(uint8_t reg, uint8_t mask) {
 	MAP_GPIOPinWrite(ENC_CS_PORT, ENC_CS, 0);
 	spi_send(0x80 | reg);
@@ -100,6 +134,11 @@ void enc_bfs(uint8_t reg, uint8_t mask) {
 	MAP_GPIOPinWrite(ENC_CS_PORT, ENC_CS, ENC_CS);
 }
 
+/**
+ * Bit Field Clear.
+ * Clear the bits of argument 'mask' in the register 'reg'.
+ * Not valid for MAC and MII registers.
+ */
 void enc_bfc(uint8_t reg, uint8_t mask) {
 	MAP_GPIOPinWrite(ENC_CS_PORT, ENC_CS, 0);
 	spi_send(0xA0 | reg);
@@ -107,6 +146,9 @@ void enc_bfc(uint8_t reg, uint8_t mask) {
 	MAP_GPIOPinWrite(ENC_CS_PORT, ENC_CS, ENC_CS);
 }
 
+/**
+ * Switch memory bank to 'new_bank'
+ */
 void enc_switch_bank(uint8_t new_bank) {
 	if (new_bank == enc_current_bank || new_bank == ANY_BANK) {
 		return;
@@ -119,6 +161,10 @@ void enc_switch_bank(uint8_t new_bank) {
 	enc_current_bank = new_bank;
 }
 
+
+/**
+ * High level register read. Switches bank as appropriate.
+ */
 uint8_t enc_read_reg(uint8_t reg, uint8_t bank) {
 	if (bank != enc_current_bank) {
 		enc_switch_bank(bank);
@@ -127,6 +173,9 @@ uint8_t enc_read_reg(uint8_t reg, uint8_t bank) {
 	return enc_rcr(reg);
 }
 
+/**
+ * High level bit field set. Switches bank as appropriate.
+ */
 void enc_set_bits(uint8_t reg, uint8_t bank, uint8_t mask) {
 	if (bank != enc_current_bank) {
 		enc_switch_bank(bank);
@@ -135,6 +184,9 @@ void enc_set_bits(uint8_t reg, uint8_t bank, uint8_t mask) {
 	enc_bfs(reg, mask);
 }
 
+/**
+ * High level bit field clear. Switches bank as appropriate.
+ */
 void enc_clear_bits(uint8_t reg, uint8_t bank, uint8_t mask) {
 	if (bank != enc_current_bank) {
 		enc_switch_bank(bank);
@@ -143,6 +195,9 @@ void enc_clear_bits(uint8_t reg, uint8_t bank, uint8_t mask) {
 	enc_bfc(reg, mask);
 }
 
+/**
+ * High level MAC/MII register read. Switches bank as appropriate.
+ */
 uint8_t enc_read_mreg(uint8_t reg, uint8_t bank) {
 	if (bank != enc_current_bank) {
 		enc_switch_bank(bank);
@@ -151,7 +206,9 @@ uint8_t enc_read_mreg(uint8_t reg, uint8_t bank) {
 	return enc_rcr_m(reg);
 }
 
-#define WRITE_REG(reg, value) enc_write_reg(reg, reg ## _BANK, value)
+/**
+ * High level register write. Switches bank as appropriate.
+ */
 void enc_write_reg(uint8_t reg, uint8_t bank, uint8_t value) {
 	if (bank != enc_current_bank) {
 		enc_switch_bank(bank);
@@ -160,6 +217,11 @@ void enc_write_reg(uint8_t reg, uint8_t bank, uint8_t value) {
 	enc_wcr(reg, value);
 }
 
+/**
+ * Read value from PHY address.
+ * Reading procedure is described in ENC28J60 datasheet
+ * section 3.3.
+ */
 uint16_t enc_phy_read(uint8_t addr) {
 	/*
 	 1. Write the address of the PHY register to read
@@ -201,6 +263,11 @@ uint16_t enc_phy_read(uint8_t addr) {
 	return ret;
 }
 
+/**
+ * Write value to PHY address.
+ * Reading procedure is described in ENC28J60 datasheet
+ * section 3.3.
+ */
 void enc_phy_write(uint8_t addr, uint16_t value) {
 	WRITE_REG(ENC_MIREGADR, addr);
 	WRITE_REG(ENC_MIWRL, value & 0xFF);
@@ -214,6 +281,9 @@ void enc_phy_write(uint8_t addr, uint16_t value) {
 	} while (stat & ENC_MISTAT_BUSY);
 }
 
+/**
+ * Set the memory area to use for receiving packets.
+ */
 void enc_set_rx_area(uint16_t start, uint16_t end) {
 	WRITE_REG(ENC_ERXSTL, start & 0xFF);
 	WRITE_REG(ENC_ERXSTH, (start >> 8) & 0xFFF);
@@ -225,6 +295,9 @@ void enc_set_rx_area(uint16_t start, uint16_t end) {
 	WRITE_REG(ENC_ERXRDPTH, (start >> 8) & 0xFFF);
 }
 
+/**
+ * Set the MAC address.
+ */
 void enc_set_mac_addr(const uint8_t *mac_addr) {
 	WRITE_REG(ENC_MAADR1, mac_addr[0]);
 	WRITE_REG(ENC_MAADR2, mac_addr[1]);
@@ -234,6 +307,9 @@ void enc_set_mac_addr(const uint8_t *mac_addr) {
 	WRITE_REG(ENC_MAADR6, mac_addr[5]);
 }
 
+/**
+ * Read the MAC address.
+ */
 void enc_get_mac_addr(uint8_t *mac_addr) {
   mac_addr[0] = READ_REG(ENC_MAADR1);
   mac_addr[1] = READ_REG(ENC_MAADR2);
@@ -243,10 +319,9 @@ void enc_get_mac_addr(uint8_t *mac_addr) {
   mac_addr[5] = READ_REG(ENC_MAADR6);
 }
 
-void enc_write_packet_data(const uint8_t *buf, uint16_t count) {
-	enc_wbm(buf, count);
-}
-
+/**
+ * Initialize the ENC28J60 with the given MAC-address
+ */
 void enc_init(const uint8_t *mac) {
 	enc_next_packet = 0x000;
 
@@ -327,6 +402,11 @@ void enc_init(const uint8_t *mac) {
 #endif
 }
 
+/**
+ * Receive a single packet.
+ * The contents will be placed in uip_buf, and uIP is called
+ * as appropriate.
+ */
 void enc_receive_packet(void) {
 	/* Receive a single packet */
 	uint8_t header[6];
@@ -376,6 +456,9 @@ void enc_receive_packet(void) {
 	SET_REG_BITS(ENC_ECON2, ENC_ECON2_PKTDEC);
 }
 
+/**
+ * Handle events from the ENC28J60.
+ */
 void enc_action(void) {
 	uint8_t reg = READ_REG(ENC_EIR);
 
@@ -387,6 +470,11 @@ void enc_action(void) {
 
 }
 
+/**
+ * Send an ethernet packet. Function will block until
+ * transmission has completed.
+ * TODO: Return if the transmission was successful or not
+ */
 void enc_send_packet(const uint8_t *buf, uint16_t count) {
   WRITE_REG(ENC_ETXSTL, TX_START & 0xFF);
   WRITE_REG(ENC_ETXSTH, TX_START >> 8);
