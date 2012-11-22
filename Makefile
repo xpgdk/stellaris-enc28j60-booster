@@ -48,26 +48,50 @@ AS      = arm-none-eabi-as
 CP      = arm-none-eabi-objcopy
 OD	= arm-none-eabi-objdump
 
-
-MACROS  = -DDTARGET_IS_BLIZZARD_RA2 -DPART_LM4F120H5QR -DUART_BUFFERED
-CFLAGS  =  -Dgcc -I$(DIR_UIP)/uip -I$(DIR_UIP) -I./ -I$(DIR_STELLARISWARE) -std=c99 -fno-common -Os -g -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=softfp  -mthumb
+#-DUART_BUFFERED
+MACROS  = -DDTARGET_IS_BLIZZARD_RA2 -DPART_LM4F120H5QR 
+CFLAGS  =  -Dgcc -I$(DIR_LWIP)/include -I$(DIR_LWIP)/include/ipv4 -I$(DIR_LWIP)/include/ipv6 -I./ -I$(DIR_STELLARISWARE) -std=c99 -fno-common -O0 -g -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=softfp  -mthumb
 LFLAGS  = -T $(LINKER) -nostartfiles
 CPFLAGS = -Obinary
 ODFLAGS	= -D
 
 SOURCES = \
-	$(NAME).c startup_gcc.c \
-	enc28j60.c \
-	httpd.c \
-	$(DIR_DRIVERLIB)/gcc-cm4f/libdriver-cm4f.a \
+	$(NAME).c echo.c \
 	$(DIR_DRIVERLIB)/uart.c \
 	$(DIR_UTILS)/uartstdio.c \
 	$(DIR_UTILS)/ustdlib.c\
-	$(DIR_UIP)/uip/uip.c \
-	$(DIR_UIP)/uip/uip_timer.c \
-	$(DIR_UIP)/uip/uip_arp.c \
-	$(DIR_UIP)/uip/psock.c \
-	$(DIR_UIP)/apps/dhcpc/dhcpc.c
+	$(DIR_LWIP)/core/raw.c \
+	$(DIR_LWIP)/core/init.c \
+	$(DIR_LWIP)/core/tcp.c \
+	$(DIR_LWIP)/core/udp.c \
+	$(DIR_LWIP)/core/tcp_in.c \
+	$(DIR_LWIP)/core/tcp_out.c \
+	$(DIR_LWIP)/core/pbuf.c \
+	$(DIR_LWIP)/core/sys.c \
+	$(DIR_LWIP)/core/def.c \
+	$(DIR_LWIP)/core/mem.c \
+	$(DIR_LWIP)/core/memp.c \
+	$(DIR_LWIP)/core/ipv4/ip4.c \
+	$(DIR_LWIP)/core/ipv4/ip4_addr.c \
+	$(DIR_LWIP)/core/ipv4/icmp.c \
+	$(DIR_LWIP)/core/ipv4/ip_frag.c \
+	$(DIR_LWIP)/core/ipv4/igmp.c \
+	$(DIR_LWIP)/core/stats.c \
+	$(DIR_LWIP)/core/inet_chksum.c \
+	$(DIR_LWIP)/core/netif.c \
+	$(DIR_LWIP)/core/timers.c \
+	$(DIR_LWIP)/core/dhcp.c \
+	$(DIR_LWIP)/netif/etharp.c \
+	startup_gcc.c \
+	arch/sys_arch.c \
+	$(DIR_DRIVERLIB)/gcc-cm4f/libdriver-cm4f.a \
+	enc28j60.c
+#	httpd.c \
+#	$(DIR_UIP)/uip/uip.c \
+#	$(DIR_UIP)/uip/uip_timer.c \
+#	$(DIR_UIP)/uip/uip_arp.c \
+#	$(DIR_UIP)/uip/psock.c \
+#	$(DIR_UIP)/apps/dhcpc/dhcpc.c
 
 all: reg
 	

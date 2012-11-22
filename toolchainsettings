@@ -11,6 +11,7 @@ DIR_DRIVERLIB = $(DIR_STELLARISWARE)/driverlib
 DIR_USBLIB = $(DIR_STELLARISWARE)/usblib
 DIR_UTILS = $(DIR_STELLARISWARE)/utils
 DIR_UIP = uip-1.0
+DIR_LWIP = $(PWD)/lwip/src
 
 ##end toolchain settings
 

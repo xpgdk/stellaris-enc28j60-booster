@@ -7,6 +7,8 @@
 #include <string.h>
 #include "spi.h"
 
+#include <netif/etharp.h>
+
 #define TX_START	(0x1FFF - 0x600)
 #define RX_END		(TX_START-1)
 
@@ -319,6 +321,105 @@ void enc_get_mac_addr(uint8_t *mac_addr) {
   mac_addr[5] = READ_REG(ENC_MAADR6);
 }
 
+static err_t
+enc_low_level_output(struct netif *netif, struct pbuf *p)
+{
+  uint8_t frame[1514];
+  uint8_t *frame_ptr = &frame[0];
+  struct pbuf *b;
+
+  for(b = p; b != NULL; b = b->next) {
+    //printf("Copying %d bytes from %p to %p\n", b->len, b->payload, frame_ptr);
+    memcpy(frame_ptr, b->payload, b->len);
+    frame_ptr += b->len;
+  }
+
+  enc_send_packet(frame, p->tot_len);
+
+  return ERR_OK;
+}
+
+static struct pbuf*
+enc_low_level_input(struct netif *netif) {
+  struct pbuf *p, *q;
+  /* Receive a single packet */
+  uint8_t header[6];
+  uint8_t *status = header + 2;
+  
+  WRITE_REG(ENC_ERDPTL, enc_next_packet & 0xFF);
+  WRITE_REG(ENC_ERDPTH, (enc_next_packet >> 8) & 0xFF);
+  enc_rbm(header, 6);
+  
+  /* Update next packet pointer */
+  enc_next_packet = header[0] | (header[1] << 8);
+  
+  uint16_t data_count = status[0] | (status[1] << 8);
+  if (status[2] & (1 << 7)) {
+    uint8_t frame[1514];
+    uint8_t *frame_ptr = &frame[0];
+    enc_rbm(frame, data_count);
+
+    p = pbuf_alloc(PBUF_LINK, data_count, PBUF_POOL);
+    //printf("p: %p\n", p);
+    if( p != NULL ) {
+      for(q = p; q != NULL; q = q->next) {
+	memcpy(q->payload, frame_ptr, q->len);
+	frame_ptr += q->len;
+      }
+    } else {
+      printf("Error!\n");
+    }
+  }
+
+  uint16_t erxst = READ_REG(ENC_ERXSTL) | (READ_REG(ENC_ERXSTH) << 8);
+
+  /* Mark packet as read */
+  if (enc_next_packet == erxst) {
+    WRITE_REG(ENC_ERXRDPTL, READ_REG(ENC_ERXNDL));
+    WRITE_REG(ENC_ERXRDPTH, READ_REG(ENC_ERXNDH));
+  } else {
+    WRITE_REG(ENC_ERXRDPTL, (enc_next_packet-1) & 0xFF);
+    WRITE_REG(ENC_ERXRDPTH, ((enc_next_packet-1) >> 8) & 0xFF);
+  }
+  SET_REG_BITS(ENC_ECON2, ENC_ECON2_PKTDEC);
+  return p;
+}
+
+#ifdef LWIP_NETIF_STATUS_CALLBACK
+void
+enc28j60_status_callback(struct netif *netif)
+{
+  if( netif->flags & NETIF_FLAG_UP ) {
+    printf("IP: %d.%d.%d.%d\n",
+	   ip4_addr1_16(&netif->ip_addr),
+	   ip4_addr2_16(&netif->ip_addr),
+	   ip4_addr3_16(&netif->ip_addr),
+	   ip4_addr4_16(&netif->ip_addr) );
+  }
+}
+#endif
+
+extern uint8_t mac_addr[];
+
+err_t enc28j60_init(struct netif *netif)
+{
+  netif->state = NULL;
+  netif->hwaddr_len = 6;
+  netif->name[0] = 'e';
+  netif->name[1] = 'n';
+  netif->output = etharp_output;
+  netif->linkoutput = enc_low_level_output;
+  netif->mtu = 1500;
+  netif->flags = NETIF_FLAG_ETHARP;
+#ifdef LWIP_NETIF_STATUS_CALLBACK
+  netif->status_callback = enc28j60_status_callback;
+#endif
+
+  memcpy(netif->hwaddr, mac_addr, 6);
+
+  return ERR_OK;
+}
+
 /**
  * Initialize the ENC28J60 with the given MAC-address
  */
@@ -408,6 +509,7 @@ void enc_init(const uint8_t *mac) {
  * as appropriate.
  */
 void enc_receive_packet(void) {
+#if 0
 	/* Receive a single packet */
 	uint8_t header[6];
 	uint8_t *status = header + 2;
@@ -454,17 +556,22 @@ void enc_receive_packet(void) {
 		WRITE_REG(ENC_ERXRDPTH, ((enc_next_packet-1) >> 8) & 0xFF);
 	}
 	SET_REG_BITS(ENC_ECON2, ENC_ECON2_PKTDEC);
+#endif
 }
 
 /**
  * Handle events from the ENC28J60.
  */
-void enc_action(void) {
+void enc_action(struct netif *netif) {
 	uint8_t reg = READ_REG(ENC_EIR);
 
 	if (reg & ENC_EIR_PKTIF) {
 		while (READ_REG(ENC_EPKTCNT) > 0) {
-		  enc_receive_packet();
+		  //enc_receive_packet();
+		  struct pbuf *p = enc_low_level_input(netif);
+		  if( p != NULL ) {
+		    netif->input(p, netif);
+		  }
 		}
 	}
 

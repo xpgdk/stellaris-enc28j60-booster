@@ -5,15 +5,18 @@
 #include "spi.h"
 #include <driverlib/systick.h>
 #include <driverlib/interrupt.h>
-#include <uip/uip.h>
-#include <uip/uip_arp.h>
+
+#include <lwip/init.h>
+#include <lwip/netif.h>
+#include <lwip/dhcp.h>
+#include <lwip/tcp_impl.h>
+#include <netif/etharp.h>
+
+#include "echo.h"
 
 static volatile unsigned long g_ulFlags;
 
 volatile unsigned long g_ulTickCounter = 0;
-
-#define UIP_PERIODIC_TIMER_MS   500
-#define UIP_ARP_TIMER_MS	10000
 
 #define FLAG_SYSTICK		0
 #define FLAG_RXPKT		1
@@ -21,12 +24,8 @@ volatile unsigned long g_ulTickCounter = 0;
 #define FLAG_RXPKTPEND		3
 #define FLAG_ENC_INT		4
 
-#define SYSTICKHZ		CLOCK_CONF_SECOND
-#define SYSTICKMS		(1000 / SYSTICKHZ)
-
-void uip_log(char *msg) {
-  printf("UIP: %s\n", msg);
-}
+#define TICK_MS			250
+#define SYSTICKHZ		(1000/TICK_MS)
 
 static void
 cpu_init(void) {
@@ -112,18 +111,11 @@ void spi_mem_read(uint16_t addr, uint8_t *buf, uint16_t count) {
   DESELECT_MEM();
 }
 
-
-
 const uint8_t mac_addr[] = { 0x00, 0xC0, 0x033, 0x50, 0x48, 0x12 };
 
 int main(void) {
-  char buf[100];
-  static struct uip_eth_addr eth_addr;
-  uip_ipaddr_t ipaddr;
-
   cpu_init();
   uart_init();
-  printf("Welcome\n");
   spi_init();
   enc28j60_comm_init();
 
@@ -150,110 +142,64 @@ int main(void) {
   MAP_GPIOPinIntClear(GPIO_PORTE_BASE, ENC_INT);
   MAP_GPIOPinIntEnable(GPIO_PORTE_BASE, ENC_INT);
 
-  uip_init();
+  lwip_init();
 
-  eth_addr.addr[0] = mac_addr[0];
-  eth_addr.addr[1] = mac_addr[1];
-  eth_addr.addr[2] = mac_addr[2];
-  eth_addr.addr[3] = mac_addr[3];
-  eth_addr.addr[4] = mac_addr[4];
-  eth_addr.addr[5] = mac_addr[5];
+  struct netif netif;
+  ip_addr_t ipaddr, netmask, gw;
 
-  uip_setethaddr(eth_addr);
-
-#define DEFAULT_IPADDR0 10
-#define DEFAULT_IPADDR1 0
-#define DEFAULT_IPADDR2 0
-#define DEFAULT_IPADDR3 201
-
-#define DEFAULT_NETMASK0 255
-#define DEFAULT_NETMASK1 255
-#define DEFAULT_NETMASK2 255
-#define DEFAULT_NETMASK3 0
-
-#undef STATIC_IP
-
-#ifdef STATIC_IP
-  uip_ipaddr(ipaddr, DEFAULT_IPADDR0, DEFAULT_IPADDR1, DEFAULT_IPADDR2,
-	     DEFAULT_IPADDR3);
-  uip_sethostaddr(ipaddr);
-  printf("IP: %d.%d.%d.%d\n", DEFAULT_IPADDR0, DEFAULT_IPADDR1,
-	     DEFAULT_IPADDR2, DEFAULT_IPADDR3);
-  uip_ipaddr(ipaddr, DEFAULT_NETMASK0, DEFAULT_NETMASK1, DEFAULT_NETMASK2,
-	     DEFAULT_NETMASK3);
-  uip_setnetmask(ipaddr);
+#if 0
+  IP4_ADDR(&gw, 10,0,0,1);
+  IP4_ADDR(&ipaddr, 10,0,0,100);
+  IP4_ADDR(&netmask, 255, 255, 255, 0)
 #else
-  uip_ipaddr(ipaddr, 0, 0, 0, 0);
-  uip_sethostaddr(ipaddr);
-  printf("Waiting for IP address...\n");
-  uip_ipaddr(ipaddr, 0, 0, 0, 0);
-  uip_setnetmask(ipaddr);
+  IP4_ADDR(&gw, 0,0,0,0);
+  IP4_ADDR(&ipaddr, 0,0,0,0);
+  IP4_ADDR(&netmask, 0, 0, 0, 0);
 #endif
 
-  httpd_init();
+  netif_add(&netif, &ipaddr, &netmask, &gw, NULL, enc28j60_init, ethernet_input);
+  netif_set_default(&netif);
+  //  netif_set_up(&netif);
 
-#ifndef STATIC_IP
-  dhcpc_init(mac_addr, 6);
-  dhcpc_request();
-#endif
+  dhcp_start(&netif);
 
-  long lPeriodicTimer, lARPTimer;
-  lPeriodicTimer = lARPTimer = 0;
+  echo_init();
 
-  int i; // = MAP_GPIOPinRead(GPIO_PORTA_BASE, ENC_INT) & ENC_INT;
-  while(true) {
-    //MAP_IntDisable(INT_UART0);
+  unsigned long last_arp_time, last_tcp_time, last_dhcp_coarse_time,
+    last_dhcp_fine_time;
+
+  last_arp_time = last_tcp_time = 0;
+
+  while(1) {
     MAP_SysCtlSleep();
-    //MAP_IntEnable(INT_UART0);
-
-    //i = MAP_GPIOPinRead(GPIO_PORTA_BASE, ENC_INT) & ENC_INT;
-    /*while(i != 0 && g_ulFlags == 0) {
-      i = MAP_GPIOPinRead(GPIO_PORTA_BASE, ENC_INT) & ENC_INT;
-      }*/
-
-    if( HWREGBITW(&g_ulFlags, FLAG_ENC_INT) == 1 ) {
-      HWREGBITW(&g_ulFlags, FLAG_ENC_INT) = 0;
-      enc_action();
-    }
 
     if(HWREGBITW(&g_ulFlags, FLAG_SYSTICK) == 1) {
       HWREGBITW(&g_ulFlags, FLAG_SYSTICK) = 0;
-      lPeriodicTimer += SYSTICKMS;
-      lARPTimer += SYSTICKMS;
-      //printf("%d %d\n", lPeriodicTimer, lARPTimer);
-    }
 
-    if( lPeriodicTimer > UIP_PERIODIC_TIMER_MS ) {
-      lPeriodicTimer = 0;
-      int l;
-      for(l = 0; l < UIP_CONNS; l++) {
-	uip_periodic(l);
-
-	//
-	// If the above function invocation resulted in data that
-	// should be sent out on the network, the global variable
-	// uip_len is set to a value > 0.
-	//
-	if(uip_len > 0) {
-	  uip_arp_out();
-	  enc_send_packet(uip_buf, uip_len);
-	  uip_len = 0;
-	}
+      if( (g_ulTickCounter - last_arp_time) * TICK_MS >= ARP_TMR_INTERVAL) {
+	etharp_tmr();
+	last_arp_time = g_ulTickCounter;
       }
 
-      for(l = 0; l < UIP_UDP_CONNS; l++) {
-	uip_udp_periodic(l);
-	if( uip_len > 0) {
-	  uip_arp_out();
-	  enc_send_packet(uip_buf, uip_len);
-	  uip_len = 0;
-	}
+      if( (g_ulTickCounter - last_tcp_time) * TICK_MS >= TCP_TMR_INTERVAL) {
+	tcp_tmr();
+	last_tcp_time = g_ulTickCounter;
+      }
+
+      if( (g_ulTickCounter - last_dhcp_coarse_time) * TICK_MS >= DHCP_COARSE_TIMER_MSECS) {
+	dhcp_coarse_tmr();
+	last_dhcp_coarse_time = g_ulTickCounter;
+      }
+
+      if( (g_ulTickCounter - last_dhcp_fine_time) * TICK_MS >= DHCP_FINE_TIMER_MSECS) {
+	dhcp_fine_tmr();
+	last_dhcp_fine_time = g_ulTickCounter;
       }
     }
 
-    if( lARPTimer > UIP_ARP_TIMER_MS) {
-      lARPTimer = 0;
-      uip_arp_timer();
+    if( HWREGBITW(&g_ulFlags, FLAG_ENC_INT) == 1 ) {
+      HWREGBITW(&g_ulFlags, FLAG_ENC_INT) = 0;
+      enc_action(&netif);
     }
 
   }
@@ -269,6 +215,7 @@ uint8_t spi_send(uint8_t c) {
 }
 
 
+#if 0
 void
 dhcpc_configured(const struct dhcpc_state *s)
 {
@@ -278,6 +225,7 @@ dhcpc_configured(const struct dhcpc_state *s)
     printf("IP: %d.%d.%d.%d\n", s->ipaddr[0] & 0xff, s->ipaddr[0] >> 8,
 	   s->ipaddr[1] & 0xff, s->ipaddr[1] >> 8);
 }
+#endif
 
 void
 SysTickIntHandler(void)
@@ -294,11 +242,13 @@ SysTickIntHandler(void)
     //g_ulFlags |= FLAG_SYSTICK;
 }
 
+#if 0
 clock_time_t
 clock_time(void)
 {
     return((clock_time_t)g_ulTickCounter);
 }
+#endif
 
 void GPIOPortEIntHandler(void) {
   uint8_t p = MAP_GPIOPinIntStatus(GPIO_PORTE_BASE, true) & 0xFF;

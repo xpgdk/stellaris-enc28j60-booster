@@ -14,9 +14,6 @@
 #include <utils/uartstdio.h>
 #include <utils/ustdlib.h>
 
-#include <uip/uip.h>
-#include <uip/uip_arp.h>
-
 #define printf          UARTprintf
 
 #define SRAM_CS		GPIO_PIN_5

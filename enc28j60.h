@@ -10,6 +10,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include <lwip/netif.h>
+
 /* Pins */
 #define ENC_CS_PORT		GPIO_PORTB_BASE
 #define ENC_INT_PORT		GPIO_PORTE_BASE
@@ -19,6 +21,8 @@
 //#define ENC_RESET		GPIO_PIN_2
 
 
+err_t enc28j60_init(struct netif *netif);
+
 /**** API ****/
 void enc_init(const uint8_t *mac);
 
@@ -26,7 +30,7 @@ void enc_init(const uint8_t *mac);
  * Function which does all the heavy work
  * It should be called when the ENC28J60 has signaled an interrupt
  */
-void enc_action(void);
+void enc_action(struct netif *netif);
 
 /**
  * Send an ethernet packet. Function will block until
